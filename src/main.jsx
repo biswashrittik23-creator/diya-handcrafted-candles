@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { ArrowRight, Check, Moon, Sparkles, Sun, X } from 'lucide-react';
+import { ArrowRight, Check, Moon, ShoppingBag, Sparkles, Sun, X } from 'lucide-react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Float, Sparkles as ThreeSparkles } from '@react-three/drei';
 import * as THREE from 'three';
@@ -22,14 +23,10 @@ const products = [
   { name: 'Marigold Sun', detail: 'DHC-107', price: '₹140', tone: 'cream', category: 'Signature jars', image: 'WhatsApp Image 2026-09-29 at 11.12.36 PM (1).jpeg' },
   { name: 'Rose Attar', detail: 'DHC-108', price: '₹130', tone: 'rose', category: 'Festive gifting', image: 'WhatsApp Image 2026-09-29 at 11.12.35 PM.jpeg' },
   { name: 'Vanilla Cloud', detail: 'DHC-109', price: '₹130', tone: 'green', category: 'Daily rituals', image: 'dhc-109-clean.jpeg' },
-  { name: 'Amber Diya', detail: 'DHC-110', price: '₹130', tone: 'cream', category: 'Signature jars', image: 'WhatsApp Image 2026-09-29 at 11.12.35 PM (2).jpeg' },
   { name: 'Champa Glow', detail: 'DHC-111', price: '₹140', tone: 'rose', category: 'Festive gifting', image: 'WhatsApp Image 2026-09-29 at 11.12.34 PM.jpeg' },
   { name: 'Green Tea Ritual', detail: 'DHC-112', price: '₹130', tone: 'green', category: 'Daily rituals', image: 'WhatsApp Image 2026-09-29 at 11.12.34 PM (1).jpeg' },
   { name: 'Moonlit Jasmine', detail: 'DHC-113', price: '₹130', tone: 'cream', category: 'Signature jars', image: 'WhatsApp Image 2026-09-29 at 11.12.33 PM.jpeg' },
 ];
-
-const ritualProductIds = new Set(['DHC-106', 'DHC-108', 'DHC-109', 'DHC-110', 'DHC-113']);
-const festiveProductIds = new Set(['DHC-101', 'DHC-102', 'DHC-103', 'DHC-104', 'DHC-105']);
 
 function CandleModel({ phase }) {
   const flameRef = useRef();
@@ -154,9 +151,13 @@ function App() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [hasBlownOut, setHasBlownOut] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [cart, setCart] = useState({});
+  const [addedProductDetail, setAddedProductDetail] = useState(null);
   const [formError, setFormError] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [theme, setTheme] = useState('light');
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [addCelebration, setAddCelebration] = useState(0);
 
   const enterStore = (event) => {
     event.preventDefault();
@@ -186,17 +187,48 @@ function App() {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [selectedProduct]);
 
+  useEffect(() => {
+    if (!addCelebration) return undefined;
+    const celebrationTimer = window.setTimeout(() => setAddCelebration(0), 1600);
+    return () => window.clearTimeout(celebrationTimer);
+  }, [addCelebration]);
+
+  useEffect(() => {
+    if (!isCartOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsCartOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isCartOpen]);
+
   const blowOutCandle = () => {
     if (!hasBlownOut) setHasBlownOut(true);
   };
 
+  const addToCart = (product) => {
+    setCart((currentCart) => ({
+      ...currentCart,
+      [product.detail]: (currentCart[product.detail] || 0) + 1,
+    }));
+    setAddedProductDetail(product.detail);
+    setAddCelebration((currentCelebration) => currentCelebration + 1);
+  };
+
+  const cartItemCount = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
+  const cartItems = Object.entries(cart).map(([detail, quantity]) => {
+    const product = products.find((item) => item.detail === detail) || null;
+    return product ? { ...product, quantity } : null;
+  }).filter(Boolean);
+
   const visibleProducts = [...(activeCategory === 'All'
     ? products
-    : activeCategory === 'Daily rituals'
-      ? products.filter((product) => ritualProductIds.has(product.detail))
-      : activeCategory === 'Festive gifting'
-        ? products.filter((product) => festiveProductIds.has(product.detail))
-      : products.filter((product) => product.category === activeCategory))].sort((firstProduct, secondProduct) => {
+    : products.filter((product) => product.category === activeCategory))].sort((firstProduct, secondProduct) => {
     const firstPrice = Number(firstProduct.price.replace(/\D/g, ''));
     const secondPrice = Number(secondProduct.price.replace(/\D/g, ''));
     return firstPrice - secondPrice;
@@ -204,9 +236,10 @@ function App() {
 
   return (
     <main className={`app-shell ${step === 'welcome' ? 'welcome-mode' : 'store-mode'} ${theme}-theme`}>
+      {addCelebration > 0 && <div key={addCelebration} className="add-celebration" role="status" aria-live="polite">Yayyyy!!!!</div>}
       <header className="site-header">
         <div className="brand-mark"><span className="brand-dot" /> diyas handcrafted candles</div>
-        <div className="header-actions"><button className="theme-toggle" onClick={() => setTheme((currentTheme) => currentTheme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}><Sun size={15} /><span>{theme === 'light' ? 'Light' : 'Dark'}</span><span className="toggle-track"><span className="toggle-thumb">{theme === 'light' ? <Sun size={10} /> : <Moon size={10} />}</span></span></button>{step === 'store' && <span className="collection-note">hand-poured in small batches</span>}</div>
+        <div className="header-actions"><button className="theme-toggle" onClick={() => setTheme((currentTheme) => currentTheme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}><Sun size={15} /><span>{theme === 'light' ? 'Light' : 'Dark'}</span><span className="toggle-track"><span className="toggle-thumb">{theme === 'light' ? <Sun size={10} /> : <Moon size={10} />}</span></span></button>{step === 'store' && <><span className="collection-note">hand-poured in small batches</span><button type="button" className="cart-summary" aria-live="polite" aria-label="Open shopping cart" onClick={() => setIsCartOpen(true)}><ShoppingBag size={15} /> Cart <span>{cartItemCount}</span></button></>}</div>
       </header>
 
       {step === 'welcome' && (
@@ -241,12 +274,18 @@ function App() {
         <section className="store-view">
           <div className="store-intro"><p className="eyebrow"><Sparkles size={14} /> the collection</p><h1>Find your<br /><em>favourite glow.</em></h1><p>Scents for slow mornings, long dinners, and all the little rituals in between.</p></div>
           <nav className="category-nav" aria-label="Product categories"><button className={activeCategory === 'All' ? 'active' : ''} onClick={() => setActiveCategory('All')}>All candles</button>{categories.map((category) => <button key={category.name} className={activeCategory === category.name ? 'active' : ''} onClick={() => setActiveCategory(category.name)}>{category.name}</button>)}</nav>
-          <div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ '--card-delay': `${index * 90}ms` }} key={product.name}><button className={`product-art ${product.tone}`} type="button" onClick={() => setSelectedProduct(product)} aria-label={`View ${product.detail}`}><span className="art-number">{String(index + 1).padStart(2, '0')}</span><img className="catalog-image" src={`catalogs/${encodeURIComponent(product.image)}`} alt={`${product.name} handcrafted candle`} /></button><div className="product-info"><div><p>{product.detail}</p></div><strong>{product.price}</strong></div></article>)}</div>
-          {selectedProduct && <div className="image-modal" role="dialog" aria-modal="true" aria-label={`Enlarged view of ${selectedProduct.detail}`} onClick={() => setSelectedProduct(null)}><div className="image-modal-content" onClick={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={() => setSelectedProduct(null)} aria-label="Close image viewer"><X size={20} /></button><img src={`catalogs/${encodeURIComponent(selectedProduct.image)}`} alt={`${selectedProduct.name} handcrafted candle enlarged`} /><p>{selectedProduct.detail} · {selectedProduct.price}</p></div></div>}
+          <div className="product-grid">{visibleProducts.map((product, index) => <article className="product-card" style={{ '--card-delay': `${index * 90}ms` }} key={product.name}><button className={`product-art ${product.tone}`} type="button" onClick={() => addToCart(product)} aria-label={`Add ${product.name} to cart`}><span className="art-number">{String(index + 1).padStart(2, '0')}</span><img className="catalog-image" src={`catalogs/${encodeURIComponent(product.image)}`} alt={`${product.name} handcrafted candle`} /></button><div className="product-info"><div><p>{product.detail}</p></div><strong>{product.price}</strong></div><button className="detail-button" type="button" onClick={() => addToCart(product)}>Add to cart</button></article>)}</div>
+          {selectedProduct && <div className="image-modal" role="dialog" aria-modal="true" aria-label={`${selectedProduct.name} details`} onClick={() => setSelectedProduct(null)}><div className="image-modal-content" onClick={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={() => setSelectedProduct(null)} aria-label="Close product details"><X size={20} /></button><img src={`catalogs/${encodeURIComponent(selectedProduct.image)}`} alt={`${selectedProduct.name} handcrafted candle`} /><h2>{selectedProduct.name}</h2><p>{selectedProduct.detail} · {selectedProduct.price}</p><button className="modal-add-button" type="button" onClick={() => addToCart(selectedProduct)}>{addedProductDetail === selectedProduct.detail ? <Check size={16} /> : <ShoppingBag size={16} />}{addedProductDetail === selectedProduct.detail ? 'Add another' : 'Add to cart'}</button>{addedProductDetail === selectedProduct.detail && <p className="cart-confirmation" role="status">Added to your cart.</p>}</div></div>}
+          {isCartOpen && createPortal(<div className="cart-overlay" onClick={() => setIsCartOpen(false)}><aside className="cart-drawer" role="dialog" aria-modal="true" aria-label="Shopping cart" onClick={(event) => event.stopPropagation()}><div className="cart-drawer-header"><h2>Your cart</h2><button type="button" className="modal-close" onClick={() => setIsCartOpen(false)} aria-label="Close cart"><X size={20} /></button></div>{cartItems.length === 0 ? <p className="empty-cart">No items added yet.</p> : <ul className="cart-items">{cartItems.map((item) => <li key={item.detail} className="cart-item"><img src={`catalogs/${encodeURIComponent(item.image)}`} alt={item.name} /><div><h3>{item.name}</h3><p>{item.detail}</p><span>{item.price} × {item.quantity}</span></div></li>)}</ul>}<div className="cart-footer"><strong>{cartItemCount} item{cartItemCount === 1 ? '' : 's'}</strong>{cartItemCount > 0 ? <a className="checkout-button" href="https://www.instagram.com/diyas_handcrafted_candles?srtk=NWpiam01Y3M4ZGZ0" target="_blank" rel="noopener noreferrer">Checkout via Instagram</a> : <button type="button" className="checkout-button" disabled>Checkout via Instagram</button>}</div></aside></div>, document.body)}
         </section>
       )}
     </main>
   );
 }
 
-createRoot(document.getElementById('root')).render(<StrictMode><App /></StrictMode>);
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Root element #root was not found.');
+
+const root = import.meta.hot?.data.root || createRoot(rootElement);
+root.render(<StrictMode><App /></StrictMode>);
+if (import.meta.hot) import.meta.hot.data.root = root;
